@@ -1,0 +1,148 @@
+<html>
+<body>
+	<h1>Converte PDF para imagens</h1>
+	Scale <input type="number" name="scale" id="scale" value="1" min="1" max="5"/><br>
+	Insira o PDF<input type='file' id='pdf-file'/><br>
+	
+	<canvas id="pdf-canvas"></canvas>
+	<div>
+		<div id="images"></div>
+		<div id="buttons">
+			<button id="prev">Previous</button>
+			<button id="next">Next</button>
+		</div>
+	</div>
+	
+	<script type="text/javascript" src="https://unpkg.com/pdfjs-dist@3.7.107/build/pdf.js"></script>
+	<script type="text/javascript">
+	//
+	//		Pdf To Images Converter
+	//	    Copyright (C) 2023 Leon Cohen
+
+	var pdfjsLib = window['pdfjs-dist/build/pdf'];
+	var pdfjsWorker = window['pdfjs-dist/build/pdf.worker.entry']
+
+	pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
+
+	var pdfDoc = null,
+		pageNum = 1,
+		pageRendering = false,
+		pageNumPending = null,
+		canvas = document.getElementById('pdf-canvas'),
+		ctx = canvas.getContext('2d'),
+		scaleElement = document.getElementById('scale'),
+		inputElement = document.getElementById('pdf-file'),
+		scale,
+		file,
+		images = [];
+
+	canvas.style.display = 'none'
+	
+	scaleElement.addEventListener('change', runPdfToImages);
+	inputElement.addEventListener('change', runPdfToImages);
+
+	function runPdfToImages(event) {
+		try {
+			checkFileAndScale()
+		} catch(e){
+			return
+		}
+
+		canvas.style.display = 'none'
+		var fileReader = new FileReader();
+		images.length = 0
+
+		fileReader.onload = function() {
+			var typedarray = new Uint8Array(this.result);
+			const loadingTask = pdfjsLib.getDocument(typedarray);
+			loadingTask.promise.then(pdfDoc_ => {
+				pdfDoc = pdfDoc_;
+				renderPages().then(() => {
+					canvas.style.display = "block"
+					displayImages(images.slice(0, 1))
+					displayArrows(images)
+				})
+			})
+		};
+		fileReader.readAsArrayBuffer(file);
+	}
+
+	function checkFileAndScale() {
+		scale = scaleElement.value
+		if (scale <= 0){
+			throw new Error("scale invalido")
+		}
+		
+		file = inputElement.files[0]
+		if (file == undefined){
+			throw new Error("input invalido")
+		}
+	}
+	 
+	function convertCanvasToImage(canvas) {
+		var image = new Image();
+		image.src = canvas.toDataURL("image/png");
+		return image;
+	}
+	 
+	async function renderPages() {
+	   	for (let i = 1; i <= pdfDoc.numPages; i++) {
+			await renderPage(i);
+	   	}
+	}
+
+	function renderPage(num) {
+	   	return new Promise(async (resolve) => {
+			const page = await pdfDoc.getPage(num);
+			var viewport = page.getViewport({scale: scale});
+			canvas.height = viewport.height;
+			canvas.width = viewport.width;
+
+			var displayWidth = 1.5;
+			canvas.style.width = `${(viewport.width * displayWidth) / scale}px`;
+			canvas.style.height = `${(viewport.height * displayWidth) / scale}px`;
+
+			var renderContext = {
+				canvasContext: ctx,
+				viewport: viewport
+			};
+			var renderTask = page.render(renderContext);
+
+
+			renderTask.promise.then(function() {
+				var image = convertCanvasToImage(canvas);
+				images.push(image);
+				resolve();
+			});
+	   });
+	}
+
+	function displayImages(images){
+		images.forEach(function(image) {
+			ctx.drawImage(image, 0, 0);
+		});
+	}
+
+	function displayArrows(images) {
+		var prev = document.getElementById('prev');
+		var next = document.getElementById('next');
+		var index = 0;
+
+		prev.addEventListener('click', function() {
+			if (index > 0) {
+				index -= 1;
+				displayImages(images.slice(index, index + 1));
+			}
+		});
+
+		next.addEventListener('click', function() {
+			if (index < images.length - 1) {
+				index += 1;
+				displayImages(images.slice(index, index + 1));
+			}
+		});
+	}
+
+	</script>  
+</body>
+</html>
